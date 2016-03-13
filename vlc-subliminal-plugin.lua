@@ -1,9 +1,7 @@
-url = require "net.url"
-
 function descriptor()
   return { 
     title = "Subliminal",
-    version = "0.0.2",
+    version = "0.0.3",
     author = "adnanyaqoobvirk",
     url = 'https://github.com/adnanyaqoobvirk/vlc-subliminal-plugin/',
     shortdesc = "Subliminal",
@@ -13,14 +11,31 @@ function descriptor()
 end
 
 function activate()
-  local current_directory = debug.getinfo(1).source:match("@(.*)/.*lua$") 
-  assert(package.loadlib(current_directory .. '/lunatic_python.so', 'luaopen_python'))()
+  if vlc.input.item() then
+    lib_loaded = load_library()
+    if not lib_loaded then
+      assert(false, 'Could not load lunatic_python library.')
+    else
+      lib_loaded()
+      -- downloading subtitles
+      vlc.osd.message("Downloading Subtitles...", 1, "bottom-left", 2000000)
+      local parsed_url = vlc.net.url_parse(vlc.input.item():uri())
+      python.execute("import os")
+      python.execute("from babelfish import Language")
+      python.execute("from subliminal import download_best_subtitles, save_subtitles, Video")
+      python.execute("video = Video.fromname('" .. vlc.strings.decode_uri(parsed_url["path"]) .. "')")
+      python.execute("subtitles = download_best_subtitles([video], {Language('eng')})")
+      python.execute("save_subtitles(video, subtitles[video])")
 
-  python.execute("import os")
-  python.execute("from babelfish import Language")
-  python.execute("from subliminal import download_best_subtitles, region, save_subtitles, Video")
+      -- adding subtitle to video
+      local subtitle_path = python.eval("os.path.splitext(video.name)[0] + '.en.srt'")
+      vlc.input.add_subtitle(subtitle_path)
+      vlc.osd.message("Subtitle Downloaded and Added.", 2, "top-left", 1000000)
+    end
+  end
 
-  vlc.osd.message("Subliminal Plugin Activated.", 1, "bottom-left", 1000000)
+  -- finally deactivating the plugin
+  close()
 end
 
 function close()
@@ -31,31 +46,17 @@ function deactivate()
   vlc.msg.dbg("Subliminal Plugin Deactivated.")
 end
 
-function menu()
-  return {    
-    'Download Subtitles',
-    'Settings'
-  }
-end
-
-function trigger_menu(menu_id)
-  if menu_id == 1 then
-    download()
-  elseif menu_id == 2 then
-    vlc.osd.message("Settings are still in development phase...", 1, "bottom-left", 1000000)
+function load_library()
+  local extensions_directory = debug.getinfo(1).source:match("@(.*)/.*lua$")
+  
+  local lib_loaded = nil
+  local lib_extensions = {'.so', '.dll', '.dylib'}
+  for i, extension in ipairs(lib_extensions) do
+    lib_loaded = package.loadlib(extensions_directory .. '/lunatic_python' .. extension, 'luaopen_python')
+    if lib_loaded then
+      break
+    end
   end
-  collectgarbage()
-end 
 
-function download()
-  if vlc.input.item() then
-    vlc.osd.message("Downloading Subtitles...", 1, "bottom-left", 2000000)
-    local video_path = url.parse(vlc.input.item():uri()).path
-    python.execute("video = Video.fromname('" .. video_path .. "')")
-    python.execute("subtitles = download_best_subtitles([video], {Language('eng')})")
-    python.execute("save_subtitles(video, subtitles[video])")
-    local subtitle_path = python.eval("os.path.splitext(video.name)[0] + '.en.srt'")
-    vlc.input.add_subtitle(subtitle_path)
-    vlc.osd.message("Subtitle Downloaded and Added.", 2, "top-left", 1000000)
-  end
+  return lib_loaded
 end
