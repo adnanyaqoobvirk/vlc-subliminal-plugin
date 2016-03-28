@@ -10,21 +10,10 @@ function descriptor()
   }
 end
 
-local subtitles_languages = {
-'alb','ara','arm','baq','ben','bos','bre','bul','bur','cat','chi','hrv','cze','dan','dut','eng',
-'epo','est','fin','fra','glg','geo','ger','ell','heb','hin','hun','ice','ind','ita','jpn','kaz',
-'khm','kor','lav','lit','ltz','mac','may','mal','mon','nor','oci','per','pol','por','pob','rum',
-'rus','scc','sin','slo','slv','spa','swa','swe','syr','tgl','tel','tha','tur','ukr','urd','vie'
-}
-
-local subtitles_providers = {
-  'opensubtitles', 'podnapisi', 'thesubdb', 'tvsubtitles', 'napiprojekt'
-}
-
-local subtitles_language_selected = "'eng'"
-local subtitles_providers_selected = "'opensubtitles'"
+local subtitles_language_selected = "eng"
+local subtitles_providers_selected = "'opensubtitles', 'podnapisi', 'addic7ed'"
 local settings_dialog = nil
-local subtitles_language_dropdown = nil
+local subtitles_language_text_input = nil
 
 function activate() 
     -- preparing python environment
@@ -87,9 +76,10 @@ function download_subtitles()
         local parsed_url = vlc.net.url_parse(vlc.input.item():uri())
         python.execute("video = Video.fromname('" .. vlc.strings.decode_uri(parsed_url["path"]) .. "')")
         python.execute(
-          "subtitles = download_best_subtitles([video], {Language(" .. subtitles_language_selected ..
-          ")}, providers=[" .. subtitles_providers_selected .. "])"
+          "subtitles = download_best_subtitles([video], {Language('" .. subtitles_language_selected ..
+          "')}, providers=[" .. subtitles_providers_selected .. "])"
         )
+        vlc.osd.channel_clear(8521)
         if python.eval("True if len(subtitles[video]) > 0 else False") then
             python.execute("save_subtitles(video, subtitles[video])")
 
@@ -116,14 +106,22 @@ end
 function create_settings_dialog()
   settings_dialog = vlc.dialog("Subliminal Settings")
 
-  subtitles_language_label = settings_dialog:add_label("Subtitles language:", 1, 1, 1, 1)
-  subtitles_language_dropdown = settings_dialog:add_dropdown(3, 1, 1, 1)
-  for i, value in ipairs(subtitles_languages) do
-    subtitles_language_dropdown:add_value(value, i)
-  end
+  subtitles_language_label = settings_dialog:add_label([[
+    Subtitles language code (<a target="_blank" rel="nofollow" 
+    href="http://www-01.sil.org/iso639-3/codes.asp">See Codes</a>):
+    ]], 1, 1, 1, 1)
+  subtitles_language_text_input = settings_dialog:add_text_input(subtitles_language_selected, 3, 1, 1, 1)
 
-  settings_dialog:add_button("save", save_settings, 2, 10, 1, 1)
-  settings_dialog:add_button("cancel", hide_settings, 3, 10, 1, 1)
+  subtitles_providers_label = settings_dialog:add_label("Subtitles providers:", 1, 2, 1, 1)
+  opensubtitles_check_box = settings_dialog:add_check_box('OpenSubtitles', true, 1, 3, 1, 1)
+  addic7ed_check_box = settings_dialog:add_check_box('Addic7ed', true, 2, 3, 1, 1)
+  podnapisi_check_box = settings_dialog:add_check_box('Podnapisi', true, 3, 3, 1, 1)
+  tvsubtitles_check_box = settings_dialog:add_check_box('TvSubtitles', false, 1, 4, 1, 1)
+  thesubdb_check_box = settings_dialog:add_check_box('TheSubDB', false, 2, 4, 1, 1)
+  napiprojekt_check_box = settings_dialog:add_check_box('NapiProjekt', false, 3, 4, 1, 1)
+
+  settings_dialog:add_button("save", save_settings, 2, 5, 1, 1)
+  settings_dialog:add_button("cancel", hide_settings, 3, 5, 1, 1)
 end
 
 function show_settings()
@@ -134,7 +132,26 @@ function show_settings()
 end
 
 function save_settings()
-  subtitles_language_selected = "'" .. subtitles_languages[subtitles_language_dropdown:get_value()] .. "'"
+  subtitles_language_selected = string.sub(string.lower(subtitles_language_text_input:get_text()), 1, 3)
+  subtitles_providers_selected = ""
+  if opensubtitles_check_box:get_checked() then
+    subtitles_providers_selected = subtitles_providers_selected .. "'opensubtitles',"
+  end
+  if addic7ed_check_box:get_checked() then
+    subtitles_providers_selected = subtitles_providers_selected .. "'addic7ed',"
+  end
+  if podnapisi_check_box:get_checked() then
+    subtitles_providers_selected = subtitles_providers_selected .. "'podnapisi',"
+  end
+  if tvsubtitles_check_box:get_checked() then
+    subtitles_providers_selected = subtitles_providers_selected .. "'tvsubtitles',"
+  end
+  if thesubdb_check_box:get_checked() then
+    subtitles_providers_selected = subtitles_providers_selected .. "'thesubdb',"
+  end
+  if napiprojekt_check_box:get_checked() then
+      subtitles_providers_selected = subtitles_providers_selected .. "'napiprojekt',"
+  end
   settings_dialog:hide()
 end
 
