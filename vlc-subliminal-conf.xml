@@ -1,0 +1,12 @@
+  <subliminal>
+    <language>eng</language>
+    <providers>
+      <opensubtitles>true</opensubtitles>
+      <podnapisi>true</podnapisi>
+      <addic7ed>true</addic7ed>
+      <tvsubtitles>false</tvsubtitles>
+      <thesubdb>false</thesubdb>
+      <napiprojekt>false</napiprojekt>
+    </providers>
+  </subliminal>
+  
