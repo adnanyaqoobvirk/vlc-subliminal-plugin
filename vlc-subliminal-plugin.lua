@@ -1,7 +1,7 @@
 function descriptor()
   return { 
     title = "Subliminal",
-    version = "0.0.4",
+    version = "0.1.0",
     author = "adnanyaqoobvirk",
     url = 'https://github.com/adnanyaqoobvirk/vlc-subliminal-plugin/',
     shortdesc = "Subliminal",
@@ -10,12 +10,19 @@ function descriptor()
   }
 end
 
-local subtitles_language_selected = "eng"
-local subtitles_providers_selected = "'opensubtitles', 'podnapisi', 'addic7ed'"
+local xml = require "simplexml"
+
+local extensions_directory = nil
+local configuration = nil
 local settings_dialog = nil
-local subtitles_language_text_input = nil
 
 function activate() 
+    -- Setting extension directory
+    extensions_directory = debug.getinfo(1).source:match("@(.*)/.*lua$")
+
+    -- Loading configuration
+    load_configuration()
+
     -- preparing python environment
     prepare_environment()
 
@@ -31,9 +38,66 @@ function close()
   vlc.deactivate()
 end
 
+-- Utilities 
+
+function tprint (tbl, indent)
+  if not indent then indent = 0 end
+  for k, v in pairs(tbl) do
+    formatting = string.rep("  ", indent) .. k .. ": "
+    if type(v) == "table" then
+      print(formatting)
+      tprint(v, indent+1)
+    elseif type(v) == 'boolean' then
+      print(formatting .. tostring(v))      
+    else
+      print(formatting .. v)
+    end
+  end
+end
+
+-- plugin code
+
+function load_configuration()
+  local config = xml.parse_url("file://" .. extensions_directory .. "/vlc-subliminal-conf.xml")
+
+  if config["name"] == "subliminal" then
+    configuration =  {language = config.children[1].children[1], providers = {}}
+    
+    provider_counter = 1
+    while provider_counter <= #config.children[2].children do
+      if config.children[2].children[provider_counter].children[1] == "true" then
+        configuration.providers[config.children[2].children[provider_counter]["name"]] = true
+      else
+        configuration.providers[config.children[2].children[provider_counter]["name"]] = false
+      end
+      provider_counter = provider_counter + 1
+    end
+  else
+    configuration = {language = "eng", providers = {opensubtitles=true, podnapisi=true, addic7ed=true, tvsubtitles=false, thesubdb=false, napiprojekt=false}}
+  end
+end
+
+function save_configuration()
+  local configuration_xml = [[
+  <subliminal>
+    <language>]] .. configuration.language .. [[</language>
+    <providers>
+      <opensubtitles>]] .. tostring(configuration.providers["opensubtitles"]) .. [[</opensubtitles>
+      <podnapisi>]] .. tostring(configuration.providers["podnapisi"]) .. [[</podnapisi>
+      <addic7ed>]] .. tostring(configuration.providers["addic7ed"]) .. [[</addic7ed>
+      <tvsubtitles>]] .. tostring(configuration.providers["tvsubtitles"]) .. [[</tvsubtitles>
+      <thesubdb>]] .. tostring(configuration.providers["thesubdb"]) .. [[</thesubdb>
+      <napiprojekt>]] .. tostring(configuration.providers["napiprojekt"]) .. [[</napiprojekt>
+    </providers>
+  </subliminal>
+  ]]
+
+  local file = io.open(extensions_directory .. "/vlc-subliminal-conf.xml", "w")
+  file:write(configuration_xml)
+  file:close()
+end
+
 function load_library()
-  local extensions_directory = debug.getinfo(1).source:match("@(.*)/.*lua$")
-  
   local lib_loaded = nil
   local lib_extensions = {'.so', '.dll', '.dylib'}
   for i, extension in ipairs(lib_extensions) do
@@ -64,9 +128,33 @@ function prepare_environment()
             python.execute("import os")
             python.execute("from babelfish import Language")
             python.execute("from subliminal import download_best_subtitles, save_subtitles, Video, region")
-            python.execute("my_region = region.configure('dogpile.cache.memory')")
+            python.execute("region.configure('dogpile.cache.dbm', arguments={'filename': '" .. extensions_directory .. "/vlc-subliminal-cachefile.dbm'})")
         end
     end
+end
+
+function get_providers_string()
+  local providers_string = ""
+  if configuration.providers["opensubtitles"] then
+    providers_string = providers_string .. "'opensubtitles',"
+  end
+  if configuration.providers["podnapisi"] then
+    providers_string = providers_string .. "'podnapisi',"
+  end
+  if configuration.providers["addic7ed"] then
+    providers_string = providers_string .. "'addic7ed',"
+  end
+  if configuration.providers["tvsubtitles"] then
+    providers_string = providers_string .. "'tvsubtitles',"
+  end
+  if configuration.providers["thesubdb"] then
+    providers_string = providers_string .. "'thesubdb',"
+  end
+  if configuration.providers["napiprojekt"] then
+    providers_string = providers_string .. "'napiprojekt',"
+  end
+
+  return providers_string
 end
 
 function download_subtitles()
@@ -76,8 +164,8 @@ function download_subtitles()
         local parsed_url = vlc.net.url_parse(vlc.input.item():uri())
         python.execute("video = Video.fromname('" .. vlc.strings.decode_uri(parsed_url["path"]) .. "')")
         python.execute(
-          "subtitles = download_best_subtitles([video], {Language('" .. subtitles_language_selected ..
-          "')}, providers=[" .. subtitles_providers_selected .. "])"
+          "subtitles = download_best_subtitles([video], {Language('" .. configuration.language ..
+          "')}, providers=[" .. get_providers_string() .. "])"
         )
         vlc.osd.channel_clear(8521)
         if python.eval("True if len(subtitles[video]) > 0 else False") then
@@ -106,19 +194,19 @@ end
 function create_settings_dialog()
   settings_dialog = vlc.dialog("Subliminal Settings")
 
-  subtitles_language_label = settings_dialog:add_label([[
+  local subtitles_language_label = settings_dialog:add_label([[
     Subtitles language code (<a target="_blank" rel="nofollow" 
     href="http://www-01.sil.org/iso639-3/codes.asp">See Codes</a>):
     ]], 1, 1, 1, 1)
-  subtitles_language_text_input = settings_dialog:add_text_input(subtitles_language_selected, 3, 1, 1, 1)
+  subtitles_language_text_input = settings_dialog:add_text_input(configuration.language, 3, 1, 1, 1)
 
-  subtitles_providers_label = settings_dialog:add_label("Subtitles providers:", 1, 2, 1, 1)
-  opensubtitles_check_box = settings_dialog:add_check_box('OpenSubtitles', true, 1, 3, 1, 1)
-  addic7ed_check_box = settings_dialog:add_check_box('Addic7ed', true, 2, 3, 1, 1)
-  podnapisi_check_box = settings_dialog:add_check_box('Podnapisi', true, 3, 3, 1, 1)
-  tvsubtitles_check_box = settings_dialog:add_check_box('TvSubtitles', false, 1, 4, 1, 1)
-  thesubdb_check_box = settings_dialog:add_check_box('TheSubDB', false, 2, 4, 1, 1)
-  napiprojekt_check_box = settings_dialog:add_check_box('NapiProjekt', false, 3, 4, 1, 1)
+  local subtitles_providers_label = settings_dialog:add_label("Subtitles providers:", 1, 2, 1, 1)
+  opensubtitles_check_box = settings_dialog:add_check_box('OpenSubtitles', configuration.providers["opensubtitles"], 1, 3, 1, 1)
+  addic7ed_check_box = settings_dialog:add_check_box('Addic7ed', configuration.providers["addic7ed"], 2, 3, 1, 1)
+  podnapisi_check_box = settings_dialog:add_check_box('Podnapisi', configuration.providers["podnapisi"], 3, 3, 1, 1)
+  tvsubtitles_check_box = settings_dialog:add_check_box('TvSubtitles', configuration.providers["tvsubtitles"], 1, 4, 1, 1)
+  thesubdb_check_box = settings_dialog:add_check_box('TheSubDB', configuration.providers["thesubdb"], 2, 4, 1, 1)
+  -- napiprojekt_check_box = settings_dialog:add_check_box('NapiProjekt', configuration.providers["napiprojekt"], 3, 4, 1, 1)
 
   settings_dialog:add_button("save", save_settings, 2, 5, 1, 1)
   settings_dialog:add_button("cancel", hide_settings, 3, 5, 1, 1)
@@ -132,26 +220,14 @@ function show_settings()
 end
 
 function save_settings()
-  subtitles_language_selected = string.sub(string.lower(subtitles_language_text_input:get_text()), 1, 3)
-  subtitles_providers_selected = ""
-  if opensubtitles_check_box:get_checked() then
-    subtitles_providers_selected = subtitles_providers_selected .. "'opensubtitles',"
-  end
-  if addic7ed_check_box:get_checked() then
-    subtitles_providers_selected = subtitles_providers_selected .. "'addic7ed',"
-  end
-  if podnapisi_check_box:get_checked() then
-    subtitles_providers_selected = subtitles_providers_selected .. "'podnapisi',"
-  end
-  if tvsubtitles_check_box:get_checked() then
-    subtitles_providers_selected = subtitles_providers_selected .. "'tvsubtitles',"
-  end
-  if thesubdb_check_box:get_checked() then
-    subtitles_providers_selected = subtitles_providers_selected .. "'thesubdb',"
-  end
-  if napiprojekt_check_box:get_checked() then
-      subtitles_providers_selected = subtitles_providers_selected .. "'napiprojekt',"
-  end
+  configuration.language = string.sub(string.lower(subtitles_language_text_input:get_text()), 1, 3)
+  configuration.providers["opensubtitles"] = opensubtitles_check_box:get_checked()
+  configuration.providers["podnapisi"] = podnapisi_check_box:get_checked()
+  configuration.providers["addic7ed"] = addic7ed_check_box:get_checked()
+  configuration.providers["tvsubtitles"] = tvsubtitles_check_box:get_checked()
+  configuration.providers["thesubdb"] = thesubdb_check_box:get_checked()
+  -- configuration.providers["napiprojekt"] = napiprojekt_check_box:get_checked()
+  save_configuration()
   settings_dialog:hide()
 end
 
