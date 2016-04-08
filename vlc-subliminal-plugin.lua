@@ -18,7 +18,7 @@ local settings_dialog = nil
 
 function activate() 
     -- Setting extension directory
-    extensions_directory = debug.getinfo(1).source:match("@(.*)/.*lua$")
+    extensions_directory = vlc.config.userdatadir() .. "/lua/extensions"
 
     -- Loading configuration
     load_configuration()
@@ -58,7 +58,7 @@ end
 -- plugin code
 
 function load_configuration()
-  local config = xml.parse_url("file://" .. extensions_directory .. "/vlc-subliminal-conf.xml")
+  local config = xml.parse_url("file:///" .. extensions_directory .. "/vlc-subliminal-conf.xml")
 
   if config["name"] == "subliminal" then
     configuration =  {language = config.children[1].children[1], providers = {}}
@@ -106,8 +106,6 @@ function load_library()
       break
     end
   end
-
-  return lib_loaded
 end
 
 function menu()
