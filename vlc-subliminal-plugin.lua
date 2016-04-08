@@ -106,6 +106,8 @@ function load_library()
       break
     end
   end
+
+  return lib_loaded
 end
 
 function menu()
