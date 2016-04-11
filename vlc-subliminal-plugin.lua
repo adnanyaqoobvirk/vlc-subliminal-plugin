@@ -1,7 +1,7 @@
 function descriptor()
   return { 
     title = "Subliminal",
-    version = "0.1.0",
+    version = "0.2.0",
     author = "adnanyaqoobvirk",
     url = 'https://github.com/adnanyaqoobvirk/vlc-subliminal-plugin/',
     shortdesc = "Subliminal",
@@ -15,6 +15,8 @@ local xml = require "simplexml"
 local extensions_directory = nil
 local configuration = nil
 local settings_dialog = nil
+local error_dialog = nil
+local environment_status = false
 
 function activate() 
     -- Setting extension directory
@@ -118,19 +120,18 @@ function menu()
 end
 
 function prepare_environment()
-    if vlc.input.item() then
-        lib_loaded = load_library()
-        if not lib_loaded then
-            assert(false, 'Could not load lunatic_python library.')
-        else
-            lib_loaded()
+  lib_loaded = load_library()
+  if not lib_loaded then
+    environment_status = false
+  else
+    lib_loaded()
 
-            python.execute("import os")
-            python.execute("from babelfish import Language")
-            python.execute("from subliminal import download_best_subtitles, save_subtitles, Video, region")
-            python.execute("region.configure('dogpile.cache.dbm', arguments={'filename': '" .. extensions_directory .. "/vlc-subliminal-cachefile.dbm'})")
-        end
-    end
+    python.execute("import os")
+    python.execute("from babelfish import Language")
+    python.execute("from subliminal import download_best_subtitles, save_subtitles, Video, region")
+    python.execute("region.configure('dogpile.cache.dbm', arguments={'filename': '" .. extensions_directory .. "/vlc-subliminal-cachefile.dbm'})")
+    environment_status = true
+  end
 end
 
 function get_providers_string()
@@ -158,27 +159,31 @@ function get_providers_string()
 end
 
 function download_subtitles()
-    if vlc.input.item() then
-        -- downloading subtitles
-        vlc.osd.message("Downloading subtitles...", 8521, "top-right", 1000000)
-        local parsed_url = vlc.net.url_parse(vlc.input.item():uri())
-        python.execute("video = Video.fromname('" .. vlc.strings.decode_uri(parsed_url["path"]) .. "')")
-        python.execute(
-          "subtitles = download_best_subtitles([video], {Language('" .. configuration.language ..
-          "')}, providers=[" .. get_providers_string() .. "])"
-        )
-        vlc.osd.channel_clear(8521)
-        if python.eval("True if len(subtitles[video]) > 0 else False") then
-            python.execute("save_subtitles(video, subtitles[video])")
+  if vlc.input.item() then
+    if environment_status then
+      -- downloading subtitles
+      vlc.osd.message("Downloading subtitles...", 8521, "top-right", 100000000)
+      local parsed_url = vlc.net.url_parse(vlc.input.item():uri())
+      python.execute("video = Video.fromname('" .. vlc.strings.decode_uri(parsed_url["path"]) .. "')")
+      python.execute(
+        "subtitles = download_best_subtitles([video], {Language('" .. configuration.language ..
+        "')}, providers=[" .. get_providers_string() .. "])"
+      )
+      vlc.osd.channel_clear(8521)
+      if python.eval("True if len(subtitles[video]) > 0 else False") then
+          python.execute("save_subtitles(video, subtitles[video])")
 
-            -- adding subtitle to video
-            local subtitle_path = python.eval("os.path.splitext(video.name)[0] + '.' + str(subtitles[video][0].language) + '.srt'")
-            vlc.input.add_subtitle(subtitle_path)
-            vlc.osd.message("Subtitles downloaded and added.", 8522, "top-right", 1000000)
-        else
-            vlc.osd.message("Subtitles not found.", 8522, "top-right", 1000000)
-        end
+          -- adding subtitle to video
+          local subtitle_path = python.eval("os.path.splitext(video.name)[0] + '.' + str(subtitles[video][0].language) + '.srt'")
+          vlc.input.add_subtitle(subtitle_path)
+          vlc.osd.message("Subtitles downloaded and added.", 8522, "top-right", 1000000)
+      else
+          vlc.osd.message("Subtitles not found.", 8522, "top-right", 1000000)
+      end
+    else
+      show_error_dialog()
     end
+  end
 end
 
 function trigger_menu(id)
@@ -213,7 +218,7 @@ function create_settings_dialog()
 end
 
 function show_settings()
-  if settings_dialog ==  nil then
+  if settings_dialog == nil then
     create_settings_dialog()
   end
   settings_dialog:show()
@@ -233,6 +238,20 @@ end
 
 function hide_settings()
   settings_dialog:hide()
+end
+
+function show_error_dialog()
+  if error_dialog == nil then
+    error_dialog = vlc.dialog("Subliminal Error")
+    error_dialog:add_label("Environment not prepared properly!", 1, 1, 1, 1)
+    error_dialog:add_label("Most probably due to not loading of lunatic_python library.", 1, 2, 1, 1)
+    error_dialog:add_button("ok", hide_error_dialog, 2, 3, 1, 1)
+  end
+  error_dialog:show()
+end
+
+function hide_error_dialog()
+  error_dialog:hide()
 end
 
 function meta_changed()
