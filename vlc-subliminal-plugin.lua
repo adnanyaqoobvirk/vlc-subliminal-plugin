@@ -162,7 +162,7 @@ function download_subtitles()
   if vlc.input.item() then
     if environment_status then
       -- downloading subtitles
-      vlc.osd.message("Downloading subtitles...", 8521, "top-right", 100000000)
+      vlc.osd.message("Downloading subtitles...", 8521, "bottom-left", 100000000)
       local parsed_url = vlc.net.url_parse(vlc.input.item():uri())
       python.execute("video = Video.fromname('" .. vlc.strings.decode_uri(parsed_url["path"]) .. "')")
       python.execute(
@@ -176,9 +176,9 @@ function download_subtitles()
           -- adding subtitle to video
           local subtitle_path = python.eval("os.path.splitext(video.name)[0] + '.' + str(subtitles[video][0].language) + '.srt'")
           vlc.input.add_subtitle(subtitle_path)
-          vlc.osd.message("Subtitles downloaded and added.", 8522, "top-right", 1000000)
+          vlc.osd.message("Subtitles downloaded and added.", 8522, "bottom-left", 1000000)
       else
-          vlc.osd.message("Subtitles not found.", 8522, "top-right", 1000000)
+          vlc.osd.message("Subtitles not found.", 8522, "bottom-left", 1000000)
       end
     else
       show_error_dialog()
